@@ -1,4 +1,5 @@
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// Public, build-time value: the API origin only (never a secret). Falls back to the local API in dev only.
+export const API_URL = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '')).replace(/\/+$/, '');
 
 export class ApiError extends Error {
   constructor(message, { status = 0, details = null } = {}) {
@@ -10,6 +11,7 @@ export class ApiError extends Error {
 }
 
 async function request(path, { method = 'GET', body, signal } = {}) {
+  if (!API_URL) throw new ApiError('The Civicsense API address is not configured. Set VITE_API_BASE_URL and rebuild.');
   let res;
   try {
     res = await fetch(`${API_URL}${path}`, {

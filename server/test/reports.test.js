@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../src/app.js';
+import { PGlite } from '@electric-sql/pglite';
 import { initDb, closeDb } from '../src/db.js';
 
 let server;
@@ -14,7 +15,7 @@ let ai = aiUnavailable;
 let aiCalls = [];
 
 before(async () => {
-  initDb(':memory:');
+  initDb(new PGlite()); // isolated in-memory Postgres: tests never touch a real database
   server = createApp({
     classifyIssue: (input) => {
       aiCalls.push(input);
@@ -25,9 +26,9 @@ before(async () => {
   base = `http://localhost:${server.address().port}/api`;
 });
 
-after(() => {
+after(async () => {
   server.close();
-  closeDb();
+  await closeDb();
 });
 
 async function api(path, { method = 'GET', body, raw } = {}) {
@@ -218,4 +219,26 @@ test('invalid input is rejected before AI is called', async () => {
   const { status } = await api('/reports', { method: 'POST', body: { title: 'x' } });
   assert.equal(status, 400);
   assert.equal(aiCalls.length, 0);
+});
+
+test('database health check reports ok', async () => {
+  const { status, body } = await api('/health/db');
+  assert.equal(status, 200);
+  assert.deepEqual(body, { status: 'ok', database: 'ok' });
+});
+
+test('CORS allows each configured origin and no others', async () => {
+  const app = createApp({ clientOrigin: 'https://civicsense.example, https://preview.example/' }).listen(0);
+  await new Promise((r) => app.once('listening', r));
+  const url = `http://localhost:${app.address().port}/api/health`;
+  try {
+    for (const origin of ['https://civicsense.example', 'https://preview.example']) {
+      const res = await fetch(url, { headers: { Origin: origin } });
+      assert.equal(res.headers.get('access-control-allow-origin'), origin);
+    }
+    const other = await fetch(url, { headers: { Origin: 'https://evil.example' } });
+    assert.equal(other.headers.get('access-control-allow-origin'), null);
+  } finally {
+    app.close();
+  }
 });

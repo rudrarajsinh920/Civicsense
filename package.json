@@ -10,7 +10,7 @@
     "build": "npm run build --prefix client",
     "start": "npm start --prefix server",
     "seed:demo": "npm run seed:demo --prefix server",
-    "start:demo": "npm run start:demo --prefix server",
-    "test": "npm test --prefix server"
+    "test": "npm test --prefix server",
+    "db:migrate": "npm run db:migrate --prefix server"
   }
 }

@@ -45,34 +45,36 @@ Civicsense keeps reporting to one short form and does the first sorting step aut
 |-------|------------|
 | Frontend | React 19, Vite 8, Tailwind CSS 4, Lucide icons |
 | Backend | Node.js 24 (ES modules), Express 5, dotenv, cors |
-| Database | SQLite through Node's built-in `node:sqlite` (no ORM, no native add-on) |
+| Database | PostgreSQL through `pg` (production: a managed provider such as Neon). Local dev and tests use PGlite, an embedded Postgres (dev dependency only). |
 | AI | Google Gemma `gemma-4-26b-a4b-it` through the official `@google/genai` SDK |
-| Tests | Node's built-in `node:test` runner. The AI is mocked, so tests use no quota. |
+| Hosting | Vercel, as two projects from this repository: `server` (Express preset) and `client` (Vite) |
+| Tests | Node's built-in `node:test` runner with an in-memory PGlite database. The AI is mocked, so tests use no quota. |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph Browser
+    subgraph FE["Vercel project: client (static)"]
         UI["React dashboard<br/>(Vite, Tailwind)"]
     end
 
-    subgraph Server["Node.js + Express API"]
+    subgraph BE["Vercel project: server (Express function)"]
         R["/api/reports router<br/>validation"]
-        H["/api/health"]
+        H["/api/health, /api/health/db"]
         G["Gemma service<br/>prompt, timeout, retry,<br/>output validation"]
-        D["db.js<br/>parameterised SQL"]
+        D["db.js<br/>pg pool, parameterised SQL"]
     end
 
-    DB[("SQLite file<br/>server/data/*.db")]
+    DB[("Managed PostgreSQL<br/>e.g. Neon (SSL)")]
     AI["Google Gemma API<br/>gemma-4-26b-a4b-it"]
-    ENV[/"server/.env<br/>GOOGLE_API_KEY"/]
+    ENV[/"Server env vars<br/>DATABASE_URL, GOOGLE_API_KEY"/]
 
-    UI -- "fetch JSON (CORS: client origin only)" --> R
+    UI -- "fetch JSON to VITE_API_BASE_URL<br/>(CORS: CLIENT_ORIGIN only)" --> R
     UI -- "poll every 20s" --> H
     R -- "title + description only" --> G
     G -- "HTTPS, JSON mode, 15s timeout" --> AI
-    ENV -. "read by server only" .-> G
+    ENV -. "server only" .-> G
+    ENV -. "server only" .-> D
     R --> D --> DB
 ```
 
@@ -83,7 +85,7 @@ sequenceDiagram
     participant U as Resident (browser)
     participant API as Express API
     participant AI as Gemma
-    participant DB as SQLite
+    participant DB as PostgreSQL
     U->>API: title, description, location
     API->>API: validate (400 if invalid, AI not called)
     API->>AI: title + description
@@ -98,20 +100,20 @@ sequenceDiagram
 
 ## Database
 
-One table, `reports`, created automatically when the server starts:
+One PostgreSQL table, `reports`, defined in [`server/src/schema.js`](server/src/schema.js). The schema is idempotent (`IF NOT EXISTS`). It is applied automatically on the first query after a cold start, or explicitly with `npm run db:migrate`.
 
 | Column | Type | Rule / default |
 |--------|------|----------------|
-| `id` | INTEGER PK AUTOINCREMENT | |
+| `id` | INTEGER GENERATED ALWAYS AS IDENTITY, primary key | |
 | `title` | TEXT NOT NULL | 120 characters max |
 | `description` | TEXT NOT NULL | 2000 characters max |
 | `category` | TEXT NOT NULL | default `Other` |
 | `priority` | TEXT NOT NULL | default `Medium`; Low / Medium / High |
 | `ai_summary` | TEXT | default `NULL` |
 | `location` | TEXT NOT NULL | 200 characters max |
-| `latitude`, `longitude` | REAL | optional; must be sent together; range-checked |
+| `latitude`, `longitude` | DOUBLE PRECISION | optional; must be sent together; range-checked |
 | `status` | TEXT NOT NULL | default `submitted`; CHECK in (`submitted`, `reviewing`, `resolved`) |
-| `created_at`, `updated_at` | TEXT NOT NULL | ISO-8601 UTC |
+| `created_at`, `updated_at` | TIMESTAMPTZ NOT NULL | default `now()`; returned by the API as ISO-8601 UTC |
 
 ## API
 
@@ -119,7 +121,8 @@ Base URL: `http://localhost:5000`. Every error is JSON in the form `{ "error": "
 
 | Method | Path | Success | Errors |
 |--------|------|---------|--------|
-| GET | `/api/health` | 200 `{ status, service, timestamp, uptime }` | |
+| GET | `/api/health` | 200 `{ status, service, timestamp, uptime }` (no database call) | |
+| GET | `/api/health/db` | 200 `{ status: "ok", database: "ok" }` | 503 `{ status: "error", database: "unreachable" }` |
 | POST | `/api/reports` | 201 saved report, including AI suggestions | 400 validation (per-field `details`) or malformed JSON |
 | GET | `/api/reports?category=&status=` | 200 array, newest first | 400 invalid status |
 | GET | `/api/reports/:id` | 200 report | 400 invalid id, 404 not found |
@@ -137,7 +140,7 @@ curl -X POST http://localhost:5000/api/reports \
 
 ## Installation and setup
 
-Requirements: **Node.js 24 or newer** (for the built-in `node:sqlite`) and npm.
+Requirements: **Node.js 20 or newer** and npm. No local PostgreSQL install is needed. Without `DATABASE_URL`, the server uses an embedded Postgres (PGlite) stored in `server/data/pglite`, which is git-ignored.
 
 ```bash
 npm run install:all
@@ -157,20 +160,26 @@ cp client/.env.example client/.env
 ```dotenv
 PORT=5000
 CLIENT_ORIGIN=http://localhost:5173
+DATABASE_URL=postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require   # optional locally
 GOOGLE_API_KEY=your-google-ai-studio-key-here
-# Optional
-# DB_PATH=./data/civicsense.db
-# GEMMA_MODEL=gemma-4-26b-a4b-it
+GEMMA_MODEL=gemma-4-26b-a4b-it
 ```
 
 `client/.env`:
 
 ```dotenv
-VITE_API_URL=http://localhost:5000
+VITE_API_BASE_URL=http://localhost:5000
 ```
 
-- Get a key from Google AI Studio. The key is read **only by the server**. It is never sent to the browser, logged or included in the frontend bundle.
-- Without a key, the app still works: reports are saved as Other / Medium with no summary, and the server logs a clear "AI classification disabled" message.
+| Variable | Where | Purpose |
+|----------|-------|---------|
+| `DATABASE_URL` | server only | PostgreSQL connection string, including the provider's SSL setting (`sslmode=require`). Leave it empty locally to use embedded Postgres. |
+| `GOOGLE_API_KEY` | server only | Google AI Studio key for Gemma. Without it, reports save as Other / Medium with no summary. |
+| `GEMMA_MODEL` | server only | Optional. Defaults to `gemma-4-26b-a4b-it`. |
+| `CLIENT_ORIGIN` | server only | Allowed browser origin(s) for CORS, comma-separated, e.g. `https://your-frontend.vercel.app` |
+| `VITE_API_BASE_URL` | client, **public** | The API's base URL, built into the JavaScript bundle. Never put a secret in any `VITE_` variable. |
+
+The key and the database URL are read **only by the server**. They are never sent to the browser, logged or included in the frontend bundle.
 
 ## Running
 
@@ -184,18 +193,14 @@ npm run dev:server   # API on http://localhost:5000
 npm run dev:client   # dashboard on http://localhost:5173
 ```
 
-### Demo mode
-
-The demo uses its own database file (`server/data/demo.db`), so it never touches your main data.
+### Database commands
 
 ```bash
-npm run seed:demo    # rebuild demo.db with 8 realistic reports (stop the demo server first)
-npm run start:demo   # start the API against demo.db
+npm run db:migrate   # create the schema (idempotent) on DATABASE_URL or the local embedded Postgres
+npm run seed:demo    # add the 8 demo reports; skips any that already exist, never deletes
 ```
 
-```bash
-npm run dev:client
-```
+Both commands use `DATABASE_URL` if it is set, so they write to that database. Check which database it points to before running them.
 
 The demo reports are fictional. Their category, priority and summary were produced by Gemma once and saved in `server/scripts/demo-reports.json`, so seeding uses no AI quota. Their statuses (submitted, under review, resolved) are Civicsense review states only. They do not mean any authority has acted.
 
@@ -203,8 +208,29 @@ The demo reports are fictional. Their category, priority and summary were produc
 
 ```bash
 npm run build        # client bundle in client/dist
-npm start            # API server
+npm start            # API server (local, non-watch)
 ```
+
+## Deploying to Vercel
+
+The repository deploys as **two Vercel projects**:
+
+| Project | Root directory | Framework preset | Environment variables |
+|---------|----------------|------------------|-----------------------|
+| Civicsense API | `server` | Express (auto-detected from `src/index.js`, which default-exports the app) | `DATABASE_URL`, `GOOGLE_API_KEY`, `GEMMA_MODEL`, `CLIENT_ORIGIN` |
+| Civicsense Frontend | `client` | Vite | `VITE_API_BASE_URL` = the API project's URL |
+
+1. Create a managed PostgreSQL database, for example on Neon, and copy its **pooled** connection string. It ends with `?sslmode=require`.
+2. Deploy the API project, then open `https://<api-url>/api/health` and `https://<api-url>/api/health/db`.
+3. Deploy the frontend project with `VITE_API_BASE_URL=https://<api-url>`.
+4. Set the API's `CLIENT_ORIGIN` to the frontend's production URL, then redeploy the API.
+5. Optional: seed demo data into production from your machine with `DATABASE_URL` set in your shell. Don't put it in a committed file.
+
+`PROJECT_STATUS.md` has the step-by-step checklist.
+
+### Moving data from the old SQLite version
+
+Earlier builds stored reports in `server/data/civicsense.db` (SQLite). That file contains only test reports, so no data migration is needed and nothing is migrated automatically. The file is left in place untouched. Delete it yourself when you no longer need it.
 
 ## Testing
 
@@ -212,9 +238,9 @@ npm start            # API server
 npm test
 ```
 
-There are 21 automated server tests using Node's built-in runner, an in-memory SQLite database and a mocked AI. They use no network and no API quota.
+There are 23 automated server tests using Node's built-in runner, an isolated in-memory Postgres (PGlite) and a mocked AI. They never connect to `DATABASE_URL`, and they use no network and no API quota.
 
-- **API:** validation, defaults, ordering, filters, get by id, status updates and error shapes.
+- **API:** validation, defaults, ordering, filters, get by id, status updates, error shapes, database health and the CORS origin list.
 - **AI integration:** suggestions are saved; the reporter's own values win; the AI can't set status; the report is still saved when the key is missing or on timeout, 429 or malformed output; invalid input never calls the AI.
 - **Gemma service:** output parsing and normalisation, malformed output, a missing key, no key leakage in errors, retry on 5xx but not 4xx, and timeout.
 
@@ -222,7 +248,10 @@ The frontend has no automated tests. It was checked by hand in a browser; see `P
 
 ## Security notes
 
-- `GOOGLE_API_KEY` lives only in `server/.env`, which is git-ignored. Only `server/src/services/gemma.js` and the startup log check read it.
+- `GOOGLE_API_KEY` and `DATABASE_URL` live only in server environment variables: `server/.env` locally (git-ignored) and Vercel project settings in production.
+  - `GOOGLE_API_KEY` is read only by `server/src/services/gemma.js` and the startup log check.
+  - `DATABASE_URL` is read only by `server/src/db.js` and `src/local-db.js`.
+- The database check endpoint returns `unreachable` without error details.
 - AI error messages never include the key or the provider's error body.
 - Every SQL statement uses bound parameters. Filters and ids never reach SQL as text.
 - All input is validated on the server: required fields, length limits, allowed values, coordinate ranges and integer ids.
@@ -236,7 +265,8 @@ The frontend has no automated tests. It was checked by hand in a browser; see `P
 - **No paging.** The list loads every report.
 - **The hosted Gemma API is sometimes slow or flaky.** Calls take about 2–15s, and some return HTTP 500. One retry covers most failures; otherwise the report is saved without AI values, and there is no "re-run AI" action yet.
 - **No duplicate detection** for repeated reports of the same issue.
-- **Local SQLite only.** The app is not deployed and has no backups.
+- **Serverless cold starts.** The first request after an idle period opens a database connection and checks the schema. This adds latency, and Neon's free tier also wakes from auto-suspend.
+- **Gemma latency counts toward function time.** Each report waits up to 15s for the AI, within the function's duration limit.
 - **No frontend automated tests.**
 - **Reports are not forwarded anywhere.** There is no integration with municipal systems.
 
@@ -249,7 +279,7 @@ The frontend has no automated tests. It was checked by hand in a browser; see `P
 - Duplicate and nearby-report detection.
 - An optional, explicitly confirmed hand-off to official municipal channels, once agreements with those bodies exist.
 - Frontend tests (for example Vitest and Testing Library) and CI.
-- Hosted deployment with a managed database and backups.
+- Database backups and point-in-time restore on the managed Postgres plan.
 
 ## Project status
 

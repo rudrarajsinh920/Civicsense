@@ -11,12 +11,16 @@ AI-powered civic issue reporting platform (Hack Day build).
 | 3 | Google Gemma AI classification on report creation | ✅ Done (2026-10-31) |
 | 4 | React dashboard: stats, filters, report form with AI result, reviewer status control | ✅ Done (2026-10-31) |
 | 5 | Hackathon prep: demo dataset, full verification, security review, README, pitch pack | ✅ Done (2026-10-31) |
-| — | Git init / commit / deploy | ⏸ Waiting for owner approval |
+| 6a | Git init + first commit; published to GitHub | ✅ Done (2026-10-31) |
+| 6b | Migrate SQLite to PostgreSQL (`pg`), prepare two Vercel projects | ✅ Done locally (2026-10-31) |
+| 6c | Create managed Postgres, deploy both Vercel projects | ⏸ Needs owner's accounts (see "Deployment checklist") |
 
 ## Stack
 
 - **client/** — React 19 + Vite 8, Tailwind CSS 4 (`@tailwindcss/vite`), Lucide React
-- **server/** — Node.js 24 (ES modules), Express 5, dotenv, cors, SQLite via built-in `node:sqlite` (`DatabaseSync`)
+- **server/** — Node.js (ES modules), Express 5, dotenv, cors, PostgreSQL via `pg` (Step 6). Earlier steps used SQLite via `node:sqlite`.
+
+**Dependencies added in Step 6:** `pg` (runtime); `@electric-sql/pglite` (dev only: embedded Postgres for tests and local dev without `DATABASE_URL`).
 
 **Dependencies added in Step 3:** `@google/genai` 2.32.0 (official Google GenAI SDK, server only).
 
@@ -96,10 +100,10 @@ npm run dev:client   # http://localhost:5173
 |------|----------|---------|---------|
 | server/.env | `PORT` | `5000` | API port |
 | server/.env | `CLIENT_ORIGIN` | `http://localhost:5173` | Allowed CORS origin |
-| server/.env | `DB_PATH` | `server/data/civicsense.db` | SQLite file location (optional) |
+| server/.env | `DATABASE_URL` | _(empty: embedded Postgres in `server/data/pglite`)_ | PostgreSQL connection string. **Server only**, includes `sslmode=require` for managed providers |
 | server/.env | `GOOGLE_API_KEY` | _(none)_ | Google AI Studio key. **Server only**, git-ignored, never sent to the browser or logged |
 | server/.env | `GEMMA_MODEL` | `gemma-4-26b-a4b-it` | Optional model override |
-| client/.env | `VITE_API_URL` | `http://localhost:5000` | API base URL used by the browser |
+| client/.env | `VITE_API_BASE_URL` | `http://localhost:5000` (dev only) | API base URL, **public**, built into the bundle |
 
 If `GOOGLE_API_KEY` is missing, the server still starts. It logs `AI classification disabled: GOOGLE_API_KEY is not set…` and saves reports with default values.
 
@@ -107,8 +111,11 @@ Run server tests: `npm test` (from the root) or `npm test --prefix server`.
 
 ## Database
 
-- Engine: SQLite through Node's built-in `node:sqlite`. The table is created on server start (`CREATE TABLE IF NOT EXISTS`).
-- File: `server/data/civicsense.db`. It is excluded from git by `server/.gitignore` (`data/`) and the root `.gitignore` (`server/data/`, `*.db*`).
+- Engine (since Step 6): PostgreSQL through `pg`.
+  - The schema is in `server/src/schema.js`. It is idempotent and applied on the first query, or with `npm run db:migrate`.
+  - Types in Postgres: `id` is INTEGER IDENTITY, the coordinates are DOUBLE PRECISION and the timestamps are TIMESTAMPTZ.
+- Locally, without `DATABASE_URL`, the server uses PGlite (embedded Postgres) in `server/data/pglite`, which is git-ignored.
+- The old SQLite files `server/data/civicsense.db` and `server/data/demo.db` were left untouched; nothing reads them any more.
 
 `reports` table:
 
@@ -334,7 +341,7 @@ The demo dataset lives in its own file instead, `server/data/demo.db`:
 - There are 8 fictional reports across all six categories: 4 submitted, 2 under review and 2 resolved. Timestamps are spread over the last 8 hours to 12.5 days, relative to the seed time.
 - Category, priority and summary were produced by **real Gemma calls** (8/8 succeeded) and frozen in the JSON. That way the UI label "suggested by Gemma" is true, and seeding uses no quota.
 - No text claims that a municipality received, verified or acted on anything. "Resolved" is a Civicsense review state only.
-- `npm run start:demo` runs the normal server with `DB_PATH` pointing at `demo.db`.
+- `npm run start:demo` ran the normal server with `DB_PATH` pointing at `demo.db`. _(Removed in Step 6: demo data now goes into PostgreSQL.)_
 - The `.claude/launch.json` file has a `server-demo` entry.
 
 ### Verification (Step 5)
@@ -389,31 +396,124 @@ Findings that need no fix for the demo, but should be fixed before any real use:
 
 ### Git and submission readiness
 
-- **Git is not initialised** in this folder. Nothing was initialised, committed or pushed (this needs your approval).
+- _(Superseded in Step 6: Git was initialised with your approval and pushed to GitHub.)_ At the end of Step 5, Git was not initialised.
 - These are excluded by the `.gitignore` rules: `.env` files, `server/data/` and `*.db*`, `node_modules/`, `client/dist/`, logs, and OS and editor files.
 - These would be committed: source, tests, `server/scripts/` (demo fixture and seed), `.env.example` files, `README.md`, `HACKATHON.md`, `PROJECT_STATUS.md` and `.claude/launch.json` (local preview config with no secrets).
 - There is no repository link, deployment URL or licence. None were invented.
 
-### Demo instructions
+### Demo instructions (updated for Step 6)
+
+Local, with exactly the 8 demo reports: stop the API and delete `server/data/pglite`, then:
 
 ```bash
 npm run install:all          # once
-npm run seed:demo            # clean demo data (stop the demo server first)
-npm run start:demo           # terminal 1: API on :5000 using demo.db
+npm run seed:demo            # 8 demo reports into the local embedded Postgres
+npm run dev:server           # terminal 1: API on :5000
 npm run dev:client           # terminal 2: dashboard on :5173
 ```
 
-Follow the 2-minute script in `HACKATHON.md`. Reseed before each run so the counts match the script (8 reports: 4 / 2 / 2).
+For the deployed app, seed once against production (see the "Deployment checklist" in Step 6). Follow the 2-minute script in `HACKATHON.md`.
+
+## Step 6: GitHub, PostgreSQL and Vercel preparation
+
+### GitHub
+
+- **Repository:** https://github.com/rudrarajsinh920/Civicsense (public).
+- The remote was empty, so no histories needed reconciling and nothing was force-pushed.
+- The first push was `main` at `86d3e7b0bd96ee53cfc8ffa642b1f3178d3e057a`.
+- **Before the push**, the whole history was scanned for the real key value, Google-key patterns, credential-bearing Postgres URLs and common token formats. It was clean. The only matches were placeholders and the code that reads the variable.
+- No `.env`, database or build files are tracked.
+
+### PostgreSQL migration
+
+- **Code changes:**
+  - `db.js` is now async on a `pg` Pool created lazily from `DATABASE_URL`, with `max: 5`, a 10s idle timeout and a 10s connect timeout. All queries use `$n` parameters, and every write uses `RETURNING`.
+  - SSL follows the provider's connection string (`sslmode=require`).
+  - Routes await the database calls. Express 5 forwards any error to the existing JSON 500 handler.
+- **API responses are unchanged:** the same fields, same order, same status codes and messages. Timestamps are still ISO-8601 strings.
+- **New endpoint:** `GET /api/health/db` returns 200 when the database is reachable and 503 `{database:"unreachable"}` when it isn't. `/api/health` stays database-free, so the dashboard's 20s polling doesn't keep the database awake.
+- **Demo seed:** `npm run seed:demo` targets `DATABASE_URL` (or local PGlite). It inserts a demo report only if none with the same title and location exists, and it never updates or deletes anything.
+- **Old SQLite data:** not migrated, and none needs migrating: `civicsense.db` holds only test reports and `demo.db` is regenerable. Both files are kept untouched.
+- **Removed:** the SQLite-specific `start:demo`, `scripts/start-demo.js` and `scripts/demo-path.js`, plus the `server-demo` launch entry.
+
+### Vercel preparation
+
+- **API (root `server`):**
+  - `src/index.js` default-exports the Express app (built in `src/app.js`), which is what Vercel's Express preset expects.
+  - Local `listen()` moved to `src/dev-server.js`; `npm run dev` and `npm start` use it.
+  - No `vercel.json` is needed.
+  - CORS uses `CLIENT_ORIGIN`, which may be a comma-separated list; a trailing slash is ignored.
+  - No local files are needed at runtime: the schema is a JS module, so it is always bundled.
+- **Frontend (root `client`):**
+  - It reads `VITE_API_BASE_URL`. `localhost:5000` is a fallback in dev mode only.
+  - A production build without the variable shows "The Civicsense API address is not configured…" instead of calling the wrong host.
+  - There is one page and no client-side routes, so no SPA rewrite is needed.
+
+### Verification (Step 6)
+
+- **Automated:** `npm test` passes **23/23** on an isolated in-memory PGlite. Two new tests cover `/api/health/db` and the CORS allow-list.
+- **Build:** `npm run build` passes.
+  - A test build with `VITE_API_BASE_URL=https://civicsense-api.example.vercel.app` contains that URL and no `localhost:5000`.
+- **Real `pg` driver path:**
+  - Setup: a local Postgres-protocol server (PGlite socket in a scratch folder), with `DATABASE_URL=postgresql://…@127.0.0.1:5433/…`.
+  - `db:migrate` created the schema with the correct column types.
+  - `seed:demo` added 8 on the first run and 0 on the second.
+  - The status CHECK constraint rejects `closed`.
+- **Vercel code path:** the default export ran with a lazy pool and no startup hook.
+  - `/api/health` returned 200 and `/api/health/db` returned `{database:"ok"}`.
+  - CORS returned the header for `http://localhost:5173` and none for `https://evil.example`.
+  - Filters worked: category, status, both combined, and an invalid status returned 400.
+  - `PATCH` to reviewing returned 200 with `updated_at > created_at`; `closed` returned 400.
+  - Validation errors, a bad id (400), an unknown id (404) and an injection-style filter (`[]`) all behaved as before.
+- **Gemma:**
+  - Garbage was classified (Garbage / Medium).
+  - One pothole hit a real **15s timeout** and was saved with the Other / Medium / null fallback, which shows the fallback working.
+  - A pothole submitted through the UI was classified **Pothole / High**.
+- **UI:**
+  - The report was submitted as #11 and resolved through the confirmation dialog.
+  - After the API was stopped, the page showed "Counts unavailable…".
+  - The API restarted through `dev-server.js` on `DATABASE_URL`, and the page returned to **11 reports (5 / 3 / 3)** by itself. **The data persisted**, and #11 was still `resolved`.
+- **Without `DATABASE_URL`:**
+  - Locally, the embedded Postgres was used: migrate and an idempotent seed worked.
+  - The deployed-style app returned 200 for health, 503 for the database check and a generic 500 for reports. No details leaked.
+- **Secrets:**
+  - The staged changes and `client/dist` contain no key value and no credential-bearing URLs.
+  - `client/dist` has no `GOOGLE_API`, `DATABASE_URL`, `genai` or `postgres` strings.
+  - `server/data/pglite` is ignored through `data/`.
+
+### Deployment checklist (owner actions)
+
+1. **Create the database (Neon recommended):**
+   - Sign up at neon.tech and create a project. A region near your users, for example Singapore or Mumbai, works well.
+   - In **Connect**, choose the **pooled** connection string. It contains `-pooler` and ends with `?sslmode=require`.
+   - Copy it straight into Vercel; don't paste it into chat or commit it.
+2. **Create the Vercel API project:**
+   - Add a New Project, import `rudrarajsinh920/Civicsense` and set the **Root Directory** to `server`. The preset should be Express.
+   - Set the environment variables (Production): `DATABASE_URL`, `GOOGLE_API_KEY`, `GEMMA_MODEL=gemma-4-26b-a4b-it`, and `CLIENT_ORIGIN=http://localhost:5173` for now.
+   - Deploy, then check that `https://<api>.vercel.app/api/health` and `/api/health/db` both return `ok`.
+3. **Create the Vercel frontend project:**
+   - Import the same repository and set the **Root Directory** to `client`. The preset should be Vite.
+   - Set `VITE_API_BASE_URL=https://<api>.vercel.app` (no trailing slash), then deploy.
+4. **Connect them:** in the API project, set `CLIENT_ORIGIN=https://<frontend>.vercel.app` and redeploy the API.
+5. **Optional demo data:** from your terminal, set `DATABASE_URL` in that shell only, run `npm run seed:demo`, then close the shell.
+6. **Verify the live app:**
+   - The page loads.
+   - Submitting a report shows a Gemma suggestion, or the fallback.
+   - A status change works.
+   - The report is still there after a reload and after a redeploy.
 
 ## Known issues / notes
 
 - There is no authentication or reviewer identity, so status changes have no audit trail (by design for this prototype).
+- Not deployed yet: the managed Postgres and both Vercel projects need the owner's accounts.
+- The `pg` pool is not registered with Vercel's `attachDatabasePool` helper. The small pool and short idle timeout, together with Neon's pooled endpoint, keep connections bounded. Revisit this if connection limits are hit.
+- `npm run seed:demo` and `npm run db:migrate` write to whatever `DATABASE_URL` points at. Check the target before running them.
 - There is no rate limiting on report submission.
 - There is no paging; every report is listed.
 - Hosted Gemma returns intermittent fast HTTP 500s. One retry covers most of them; otherwise the report saves without AI values. Latency is about 2–15s.
 - There is no way to re-run AI classification for a report saved during an AI outage.
 - There are no frontend automated tests (the frontend was verified by hand in the browser).
-- `server/data/civicsense.db` still holds test reports 1–10 (listed above). It was kept because deleting it needs approval.
+- The old SQLite files `server/data/civicsense.db` (test reports 1–10) and `demo.db` are no longer used. They were kept because deleting them needs approval. Both are git-ignored.
 - The folder is not a git repository yet.
 - Running both apps needs two terminals (no `concurrently` dependency, by choice).
 - `npm install` reported that the install scripts for `@google/genai` (a no-op) and `protobufjs` (a version notice) were not run. Both are harmless.

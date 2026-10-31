@@ -87,7 +87,7 @@ export function createReportsRouter({ classifyIssue }) {
 
     const ai = await aiSuggestions(classifyIssue, data);
     // Values the reporter chose explicitly win over AI suggestions.
-    const report = createReport({
+    const report = await createReport({
       ...data,
       category: data.category ?? ai?.category,
       priority: data.priority ?? ai?.priority,
@@ -96,30 +96,30 @@ export function createReportsRouter({ classifyIssue }) {
     res.status(201).json(report);
   });
 
-  router.get('/', (req, res) => {
+  router.get('/', async (req, res) => {
     const { category, status } = req.query;
     if (category !== undefined && typeof category !== 'string') return badRequest(res, 'category must be a single value');
     if (status !== undefined && !REPORT_STATUSES.includes(status)) {
       return badRequest(res, `status must be one of: ${REPORT_STATUSES.join(', ')}`);
     }
-    res.json(listReports({ category, status }));
+    res.json(await listReports({ category, status }));
   });
 
-  router.get('/:id', (req, res) => {
+  router.get('/:id', async (req, res) => {
     const id = parseId(req.params.id);
     if (!id) return badRequest(res, 'Report id must be a positive integer');
-    const report = getReportById(id);
+    const report = await getReportById(id);
     return report ? res.json(report) : notFound(res);
   });
 
-  router.patch('/:id/status', (req, res) => {
+  router.patch('/:id/status', async (req, res) => {
     const id = parseId(req.params.id);
     if (!id) return badRequest(res, 'Report id must be a positive integer');
     const status = req.body?.status;
     if (!REPORT_STATUSES.includes(status)) {
       return badRequest(res, `status must be one of: ${REPORT_STATUSES.join(', ')}`);
     }
-    const report = updateReportStatus(id, status);
+    const report = await updateReportStatus(id, status);
     return report ? res.json(report) : notFound(res);
   });
 

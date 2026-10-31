@@ -14,13 +14,14 @@ Read this alongside `README.md`; the setup steps are there.
 
 **Before you start:**
 
-- Run `npm run seed:demo`, then `npm run start:demo` and `npm run dev:client`.
+- **Deployed:** open the frontend Vercel URL. Seed the production database once with `npm run seed:demo`, run from your machine with `DATABASE_URL` set in your shell. Seeding skips reports that already exist, so it is safe to repeat.
+- **Local:** for exactly 8 reports, start from an empty local database. Stop the API, delete `server/data/pglite`, then run `npm run seed:demo`, `npm run dev:server` and `npm run dev:client`.
 - Open `http://localhost:5173` and make sure the header shows **Live**.
 - Keep a phone-width browser window ready (for example, DevTools device mode at 375px).
 
 | Time | Do | Say |
 |------|----|-----|
-| 0:00–0:15 | Show the dashboard top: the heading and the "Where reports stand" bar | "This is the shared view. Eight reports so far: four submitted, two under review, two resolved. The bar is live data from SQLite." |
+| 0:00–0:15 | Show the dashboard top: the heading and the "Where reports stand" bar | "This is the shared view. Eight reports so far: four submitted, two under review, two resolved. The bar is live data from PostgreSQL." |
 | 0:15–0:45 | In **Report an issue**, type: title *Deep pothole in front of the bus depot*; description *A pothole about a foot wide opened up after the rain. Buses swing into the next lane to avoid it and it fills with water, so riders can't see it at night.*; location *KR Road, outside the city bus depot*. Click **Submit report**. | "I'm writing it the way a resident would, with no dropdowns. While it saves, the server sends only the title and description to Gemma." |
 | 0:45–1:05 | Point at the **AI suggestion from Gemma** panel | "Gemma says Pothole, High priority, with a neutral one-line summary. It's clearly labelled as a suggestion that a person hasn't checked. The new report is already at the top of the list." |
 | 1:05–1:25 | Set the category filter to **Pothole**, then click **Clear filters**. Click the **Submitted** count in the status bar. | "Reviewers can slice by category or status. The counts are filters too." |
@@ -37,7 +38,7 @@ Read this alongside `README.md`; the setup steps are there.
 
 ## Technical architecture (talking points)
 
-- **Three parts:** a React dashboard (Vite and Tailwind), an Express API on Node 24, and SQLite using Node's built-in `node:sqlite`. No ORM and no native add-ons, so setup is a single `npm install`.
+- **Three parts:** a React dashboard (Vite and Tailwind), an Express API on Node 24, and PostgreSQL through `pg`. In production that's a managed Postgres such as Neon. Locally and in tests it's PGlite, an embedded Postgres, so setup still needs no database install. The frontend and API are deployed as two Vercel projects from one repository.
 - **Thin, testable layers:**
   - `routes/reports.js` validates input;
   - `db.js` holds every SQL statement, all with bound parameters;
@@ -67,7 +68,7 @@ Read this alongside `README.md`; the setup steps are there.
 - **Input validation on the server:** required fields, length limits, allowed values, coordinate ranges and integer ids. Errors come back as clear JSON with per-field details.
 - **SQL injection:** every query uses bound parameters, and an injection-style filter returns an empty list.
 - **CORS** is limited to the dashboard's origin.
-- **Reliability:** reports are never lost because of the AI. The UI handles a down server with a banner, keeps the typed form values and recovers automatically. The data persists across restarts in SQLite.
+- **Reliability:** reports are never lost because of the AI. The UI handles a down server with a banner, keeps the typed form values and recovers automatically. The data lives in managed PostgreSQL, so it persists across requests, cold starts and redeploys.
 
 ## Honest limitations and future scope
 
@@ -77,7 +78,7 @@ Read this alongside `README.md`; the setup steps are there.
 - There's no rate limiting, so a flood of reports could use up the AI quota (the reports would still save).
 - There's no paging, duplicate detection or map view.
 - Hosted Gemma is sometimes slow or returns errors; we handle it, but it shows.
-- It runs locally only. It isn't deployed and has no backups.
+- There are no backups beyond what the Postgres provider's plan includes.
 - Reports are **not** sent to any municipal authority, and the app says so on the form.
 
 **Next steps:**
