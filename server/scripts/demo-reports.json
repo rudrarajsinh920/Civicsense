@@ -1,0 +1,86 @@
+[
+  {
+    "title": "Streetlights out along the railway underpass",
+    "description": "Four of the six lights inside the underpass have been dark for about ten days. Walking through after 7pm is unsafe, especially for people coming back from the station.",
+    "location": "Railway underpass, Station Road",
+    "latitude": 12.9767,
+    "longitude": 77.5713,
+    "status": "reviewing",
+    "hoursAgo": 196,
+    "category": "Streetlight",
+    "priority": "High",
+    "ai_summary": "Four streetlights inside the railway underpass have been non-functional for ten days, creating safety concerns after dark."
+  },
+  {
+    "title": "Water pipe leaking at the junction",
+    "description": "Clean water has been leaking from a cracked pipe at the corner since Monday. The road is always wet and a puddle is forming near the bus stop.",
+    "location": "5th Cross and 2nd Main junction",
+    "status": "submitted",
+    "hoursAgo": 70,
+    "category": "Water Supply",
+    "priority": "High",
+    "ai_summary": "A cracked pipe is leaking clean water, causing the road to remain wet and forming a puddle near a bus stop."
+  },
+  {
+    "title": "Storm drain blocked after the rain",
+    "description": "The drain in front of the vegetable market is choked with plastic and silt. After last night's rain the water stood ankle-deep on the road for hours.",
+    "location": "Old vegetable market, Market Road",
+    "status": "resolved",
+    "hoursAgo": 240,
+    "category": "Drainage",
+    "priority": "High",
+    "ai_summary": "A storm drain is blocked by plastic and silt, causing water to accumulate on the road."
+  },
+  {
+    "title": "Cluster of potholes on the service road",
+    "description": "Three potholes next to each other on the service road. Two-wheelers swerve into traffic to avoid them, and one rider fell yesterday evening.",
+    "location": "Service road beside the flyover, Outer Ring Road",
+    "latitude": 12.9352,
+    "longitude": 77.6245,
+    "status": "reviewing",
+    "hoursAgo": 120,
+    "category": "Pothole",
+    "priority": "High",
+    "ai_summary": "Three potholes on the service road are causing vehicles to swerve into traffic and have resulted in a rider falling."
+  },
+  {
+    "title": "Construction waste dumped on an empty plot",
+    "description": "Someone has been dumping broken tiles, cement bags and household garbage on the empty plot. It has started to smell and stray dogs are pulling the bags onto the street.",
+    "location": "Empty plot behind Lakeview Apartments",
+    "status": "submitted",
+    "hoursAgo": 30,
+    "category": "Garbage",
+    "priority": "Medium",
+    "ai_summary": "Construction waste and household garbage are being dumped on an empty plot, causing odors and attracting stray dogs."
+  },
+  {
+    "title": "Broken footpath slabs outside the school",
+    "description": "Several footpath slabs are cracked and tilted outside the primary school gate. Children have to walk on the road at drop-off time.",
+    "location": "Government Primary School, Temple Street",
+    "status": "submitted",
+    "hoursAgo": 50,
+    "category": "Other",
+    "priority": "High",
+    "ai_summary": "Cracked and tilted footpath slabs near a school gate force pedestrians to walk on the road."
+  },
+  {
+    "title": "Very low water pressure in the evenings",
+    "description": "For two weeks the water pressure drops to a trickle between 6pm and 9pm. Upper floors get almost no water during that time.",
+    "location": "Block B, Sunrise Housing Colony",
+    "status": "resolved",
+    "hoursAgo": 300,
+    "category": "Water Supply",
+    "priority": "Medium",
+    "ai_summary": "Water pressure drops significantly in the evenings, affecting upper floors."
+  },
+  {
+    "title": "Flickering light at the park entrance",
+    "description": "The lamp post at the main entrance of the park flickers on and off all night. It is not fully dark yet, but the path is hard to see.",
+    "location": "Main gate, Gandhi Park",
+    "status": "submitted",
+    "hoursAgo": 8,
+    "category": "Streetlight",
+    "priority": "Medium",
+    "ai_summary": "A lamp post at the park entrance is flickering, making the path difficult to see."
+  }
+]

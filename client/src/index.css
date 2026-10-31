@@ -1,0 +1,55 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-forest: #12372a;
+  --color-paper: #f7f4ec;
+  --color-stone: #e7e0d3;
+  --color-moss: #4f6f52;
+  --color-terracotta: #c96b4b;
+  /* Darker terracotta for small text: plain terracotta fails AA contrast on paper. */
+  --color-clay: #9e4a2e;
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  @apply bg-paper text-forest font-sans antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-terracotta);
+  outline-offset: 2px;
+}
+
+/* The one orchestrated moment: ledger segments grow in on load and when counts change. */
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+.ledger-segment {
+  transform-origin: left;
+  animation: grow 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.reveal {
+  animation: reveal 280ms ease-out both;
+}
+
+dialog::backdrop {
+  background: rgb(18 55 42 / 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
